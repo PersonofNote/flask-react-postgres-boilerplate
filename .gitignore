@@ -2,5 +2,6 @@
 .env.prod.db
 .env.dev
 .DS_Store
-node_modules
-boilerplate
+node_modules/
+boilerplate/
+__pycache__

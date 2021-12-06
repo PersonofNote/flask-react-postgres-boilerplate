@@ -1,6 +1,10 @@
 ## Runs the app
 
 from flask.cli import FlaskGroup
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
 
 from web import app, db, User
 
@@ -17,9 +21,12 @@ def create_db():
 
 @cli.command("seed_db")
 def seed_db():
+    # TODO: implement error handling on this
     db.session.add(User(email="jessie@test.org"))
+    db.session.add(User(email="bob@test.org"))
     db.session.commit()
 
+from web.models import *
 
 if __name__ == "__main__":
     cli()
