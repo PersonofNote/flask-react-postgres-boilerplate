@@ -1,5 +1,6 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
+from flask_restful import Resource, Api
 import os
 
 app = Flask(__name__)
@@ -7,8 +8,9 @@ app.config.from_object("web.config.Config")
 SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite://")
 
 db = SQLAlchemy(app)
+api = Api(app)
 
-
+# TODO: move models into their own folder
 class User(db.Model):
     __tablename__ = "users"
 
@@ -19,45 +21,37 @@ class User(db.Model):
     def __init__(self, email):
         self.email = email
 
-# Prevents circular imports?
-'''
-def init_app(app):
-    db.init_app(app)
 
-    from app.api import api_blueprint
+class DisplayUserProfile(Resource):
+    def get(self, user_id):
+        engine = db.create_engine(SQLALCHEMY_DATABASE_URI, {})
+        connection = engine.connect()
+        metadata = db.MetaData()
+        user = db.Table('users', metadata, autoload=True, autoload_with=engine)
+        #Equivalent to 'SELECT * FROM user'
+        query = db.select([user]).where(user.c.id == user_id)
+        ResultProxy = connection.execute(query)
+        result = ResultProxy.fetchall()
+        return jsonify({'result': [dict(row) for row in result]})
 
-    app.register_blueprint(api_blueprint)
+    def put(self, user_id):
+        #TODO: Add to db once model is finalized
+        return(f"Adding user {user_id}")
 
-    return app
-'''
+api.add_resource(DisplayUserProfile, '/users/<int:user_id>')
 
-@app.route("/")
-def hello_world():
-    return jsonify(hello="world")
+class DisplayAllUsers(Resource):
+    def get(self):
+        engine = db.create_engine(SQLALCHEMY_DATABASE_URI, {})
+        connection = engine.connect()
+        metadata = db.MetaData()
+        user = db.Table('users', metadata, autoload=True, autoload_with=engine)
+        #Equivalent to 'SELECT * FROM user'
+        query = db.select([user])
+        ResultProxy = connection.execute(query)
+        result = ResultProxy.fetchall()
+        return jsonify({'result': [dict(row) for row in result]})
 
+api.add_resource(DisplayAllUsers, '/users')
 
-@app.route("/users/<int:user_id>")
-def fetch_user_profile(user_id):
-    engine = db.create_engine(SQLALCHEMY_DATABASE_URI, {})
-    connection = engine.connect()
-    metadata = db.MetaData()
-    user = db.Table('users', metadata, autoload=True, autoload_with=engine)
-    #Equivalent to 'SELECT * FROM user'
-    query = db.select([user]).where(user.c.id == user_id)
-    ResultProxy = connection.execute(query)
-    result = ResultProxy.fetchall()
-    return jsonify({'result': [dict(row) for row in result]})
-
-
-@app.route("/users")
-def fetch_all_users():
-    engine = db.create_engine(SQLALCHEMY_DATABASE_URI, {})
-    connection = engine.connect()
-    metadata = db.MetaData()
-    user = db.Table('users', metadata, autoload=True, autoload_with=engine)
-    #Equivalent to 'SELECT * FROM user'
-    query = db.select([user])
-    ResultProxy = connection.execute(query)
-    result = ResultProxy.fetchall()
-    return jsonify({'result': [dict(row) for row in result]})
 
