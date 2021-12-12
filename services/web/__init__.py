@@ -5,7 +5,6 @@ from flask_cors import CORS, cross_origin
 import jwt
 from . import auth
 import os
-from . import models
 #from app.services.user import send_email
 #from web.serde.user import UserSchema
 #from models.user import User
@@ -33,10 +32,14 @@ app.before_request_funcs.setdefault(None, [auth.decode_cookie])
 
 db = SQLAlchemy(app)
 api = Api(app)
+# TODO: Restrict CORS to only the API
 cors = CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Research the best way to handle this
 connection = engine.connect()
+
+from web.models import User
+print(User)
 
 class DisplayHomePage(Resource):
     def get(self):
@@ -72,13 +75,20 @@ class AllUsers(Resource):
 api.add_resource(AllUsers, '/users', methods=['GET', 'POST'])
 
 class CreateUser(Resource):
-    def get(self):
-        return jsonify({"message": "TESTING"})
     def post(self):
+        new_user = User.User(
+            email=request.json['email'],
+            username=request.json['username'],
+            password=request.json['password']
+        )
+        db.session.add(new_user)
+        db.session.commit()
         #TODO: Add to db once model is finalized
-        return jsonify({"message": "USER CREATION"})
+        print("⭐⭐⭐⭐⭐⭐⭐")
+        print(request)
+        return jsonify({"message": "Success! Check your inbox for an activation email"})
 
-api.add_resource(CreateUser, '/users/create', methods=['GET','POST'])
+api.add_resource(CreateUser, '/users/create', methods=['POST'])
 
 
 class SignUpView(Resource):
