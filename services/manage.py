@@ -2,16 +2,19 @@
 
 from flask.cli import FlaskGroup
 import logging
+import os
 
 logging.basicConfig(level=logging.DEBUG)
 
 
-from web import app, db, User
+from web import app, db
 
+from web.models import User
 
 cli = FlaskGroup(app)
 
-# Register command to the cli so we can run it from the terminal
+#SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite://")
+
 @cli.command("create_db")
 def create_db():
     db.drop_all()
@@ -22,11 +25,11 @@ def create_db():
 @cli.command("seed_db")
 def seed_db():
     # TODO: implement error handling on this
-    db.session.add(User(email="jessie@test.org"))
-    db.session.add(User(email="bob@test.org"))
+    db.session.add(User.User(email="jessie@test.org", username="jessie", password="test"))
+    db.session.add(User.User(email="bob@test.org", username="bob", password="test"))
     db.session.commit()
 
-from web.models import *
 
 if __name__ == "__main__":
+    print("Starting app")
     cli()
