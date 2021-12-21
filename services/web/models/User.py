@@ -2,6 +2,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from web import db
 import uuid
 
+
 class User(db.Model):
     __tablename__ = "users"
     # Will also check uniqueness in the app itself

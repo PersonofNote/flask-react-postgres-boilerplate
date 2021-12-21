@@ -1,7 +1,8 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response, g, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_restful import Resource, Api
 from flask_cors import CORS, cross_origin
+from werkzeug.security import check_password_hash
 import jwt
 from . import auth
 import os
@@ -10,8 +11,27 @@ import os
 #from models.user import User
 #from web import db
 
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+
+
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
+#
+
+errors = {
+    'UserAlreadyExistsError': {
+        'message': "A user with that username or password already exists",
+        'status': 409,
+    },
+    'ResourceDoesNotExist': {
+        'message': "A resource with that ID no longer exists.",
+        'status': 410,
+        'extra': "This user may have been deleted or deactivated",
+    },
+}
 
 
 
@@ -27,9 +47,12 @@ engine = create_engine(
 app = Flask(__name__)
 app.config.from_object("web.config.Config")
 app.before_request_funcs.setdefault(None, [auth.decode_cookie])
-# Threading and tasks for email? What is this?
-#create_celery(app)
 
+# Setup the Flask-JWT-Extended extension
+app.config["JWT_SECRET_KEY"] = os.environ['JWT_SECRET_KEY']
+jwt = JWTManager(app)
+
+# Setup SqlAlchemy
 db = SQLAlchemy(app)
 api = Api(app)
 # TODO: Restrict CORS to only the API
@@ -39,7 +62,36 @@ cors = CORS(app, resources={r"/*": {"origins": "*"}})
 connection = engine.connect()
 
 from web.models import User
-print(User)
+
+# TODO: Make this not be this way. It's weird.
+User = User.User
+
+
+# Create a route to authenticate your users and return JWTs. The
+# create_access_token() function is used to actually generate the JWT.
+@app.route("/logtest", methods=["POST"])
+def login():
+    print(request)
+    email = request.json.get("username", "")
+    password = request.json.get("password", "")
+    user = User.query.filter(
+           User.email == email.strip().lower()
+    ).first()
+    if user is None or not user.verify_password(password):
+        return make_response(jsonify({"error": "Check your credentials and try again"}), 401)
+    access_token = create_access_token(identity=email)
+    return jsonify(access_token=access_token)
+
+
+# Protect a route with jwt_required, which will kick out requests
+# without a valid JWT present.
+# For testing only
+@app.route("/protected", methods=["GET"])
+@jwt_required
+def protected():
+    # Access the identity of the current user with get_jwt_identity
+    current_user = get_jwt_identity()
+    return jsonify(logged_in_as=current_user), 200 
 
 class DisplayHomePage(Resource):
     def get(self):
@@ -74,67 +126,51 @@ class AllUsers(Resource):
 
 api.add_resource(AllUsers, '/users', methods=['GET', 'POST'])
 
-class CreateUser(Resource):
-    def post(self):
-        new_user = User.User(
-            email=request.json['email'],
-            username=request.json['username'],
-            password=request.json['password']
-        )
-        db.session.add(new_user)
-        db.session.commit()
-        #TODO: Add to db once model is finalized
-        print("⭐⭐⭐⭐⭐⭐⭐")
-        print(request)
-        return jsonify({"message": "Success! Check your inbox for an activation email"})
-
-api.add_resource(CreateUser, '/users/create', methods=['POST'])
-
 
 class SignUpView(Resource):
     def post(self):
         data = request.get_json()
-        '''
-        print("✨✨✨✨✨")
-        print(data)
         user = User.query.filter(
-            func.lower(User.email) == data["email"].strip().lower()
+           User.email == data["email"].strip().lower()
         ).first()
-
         if user:
-            abort(400, "This email address is already in use.")
+            abort(400, "This email or username is already in use.")
 
-        user = User()
-        user.email = data["email"].strip()
-        user.password = data["password"].strip()
-        user.last_login = datetime.now()
+        user = User(data["email"].strip(), data["username"].strip(), data["password"].strip())
 
-        db.session.add(user)
+        db.session.add(user) 
         db.session.commit()
+
         # TODO: integrate with mailgun
+        '''
         send_email(
             user.email,
             "Account activation",
             "verify_email.html",
             root_domain=request.url_root,
         )
-        response = make_response("")
-        response.set_cookie(
-            "user",
-            jwt.encode(
-                UserSchema().dump(user), app.config["SECRET_KEY"], algorithm="HS256"
-            ),
-        )
         '''
+        response = make_response("")
 
-        return data
+        # TODO: modify response to indicate email was sent
+        return jsonify({"message": "Success!"})
 
-api.add_resource(SignUpView, '/auth/signup', methods=['GET','POST'])
+
+# TODO: add home redirect
+api.add_resource(SignUpView, '/auth/signup', methods=['POST'])
 
 class SignInView(Resource):
     def post(self):
         data = request.get_json()
-        return data
+        email = data["username"]
+        password = data["password"]
+        user = User.query.filter(
+            User.email == email.strip().lower()
+        ).first()
+        if user is None or not user.verify_password(password):
+            return make_response(jsonify({"error": "Check your credentials and try again"}), 401)
+        access_token = create_access_token(identity=email)
+        return jsonify({'status': 200, 'user': {'email': user.email, 'username': user.username, 'id': user.id, 'access_token': access_token}})
 
 api.add_resource(SignInView, '/auth/signin', methods=['GET','POST'])
 
