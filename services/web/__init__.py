@@ -46,7 +46,7 @@ engine = create_engine(
 
 app = Flask(__name__)
 app.config.from_object("web.config.Config")
-app.before_request_funcs.setdefault(None, [auth.decode_cookie])
+#app.before_request_funcs.setdefault(None, [auth.decode_cookie])
 
 # Setup the Flask-JWT-Extended extension
 app.config["JWT_SECRET_KEY"] = os.environ['JWT_SECRET_KEY']
@@ -67,22 +67,6 @@ from web.models import User
 User = User.User
 
 
-# Create a route to authenticate your users and return JWTs. The
-# create_access_token() function is used to actually generate the JWT.
-@app.route("/logtest", methods=["POST"])
-def login():
-    print(request)
-    email = request.json.get("username", "")
-    password = request.json.get("password", "")
-    user = User.query.filter(
-           User.email == email.strip().lower()
-    ).first()
-    if user is None or not user.verify_password(password):
-        return make_response(jsonify({"error": "Check your credentials and try again"}), 401)
-    access_token = create_access_token(identity=email)
-    return jsonify(access_token=access_token)
-
-
 # Protect a route with jwt_required, which will kick out requests
 # without a valid JWT present.
 # For testing only
@@ -101,13 +85,18 @@ api.add_resource(DisplayHomePage, '/')
 
 class DisplayUserProfile(Resource):
     def get(self, user_id):
-        metadata = db.MetaData()
-        user = db.Table('users', metadata, autoload=True, autoload_with=engine)
-        #Equivalent to 'SELECT * FROM user'
-        query = db.select([user]).where(user.c.id == user_id)
-        ResultProxy = connection.execute(query)
-        result = ResultProxy.fetchall()
-        return jsonify({'result': [dict(row) for row in result]})
+        #current_user = get_jwt_identity()
+        current_user = True
+        print(current_user)
+        if current_user:
+            metadata = db.MetaData()
+            user = db.Table('users', metadata, autoload=True, autoload_with=engine)
+            #Equivalent to 'SELECT * FROM user'
+            query = db.select([user]).where(user.c.id == user_id)
+            ResultProxy = connection.execute(query)
+            result = ResultProxy.fetchall()
+            return jsonify({'result': [dict(row) for row in result]})
+        return jsonify({"message": "You are not logged in"})
 
 api.add_resource(DisplayUserProfile, '/users/<int:user_id>')
 
@@ -131,8 +120,9 @@ class SignUpView(Resource):
     def post(self):
         data = request.get_json()
         user = User.query.filter(
-           User.email == data["email"].strip().lower()
-        ).first()
+           User.email == data["email"].strip().lower(),
+           User.email == data["username"].strip().lower()
+        )
         if user:
             abort(400, "This email or username is already in use.")
 
